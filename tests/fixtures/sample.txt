@@ -1,0 +1,9 @@
+Retrieval-Augmented Generation, commonly abbreviated as RAG, is an architecture that grounds a language model's answers in a specific corpus of documents. Instead of relying solely on the parametric knowledge baked into the model's weights, a RAG system retrieves the most relevant passages from a trusted source and supplies them to the model as context at inference time.
+
+The pipeline begins with ingestion. Each uploaded document is parsed into plain text, page by page, so that the original location of every passage is preserved. Preserving the page number matters because it allows the application to cite its sources precisely, telling the user exactly where an answer came from rather than asking them to take the model's word for it.
+
+After parsing, the text is divided into overlapping chunks. Chunking keeps each unit small enough to embed effectively while the overlap ensures that a sentence spanning a boundary is never lost. Every chunk is then converted into a high-dimensional vector by an embedding model. These vectors capture semantic meaning, so passages about similar topics land near one another in the vector space even when they share no exact words.
+
+When a user asks a question, the question itself is embedded and compared against the stored chunk vectors using cosine similarity. The closest matches, scoped to the user's own workspace, are pulled back and handed to the language model alongside the original question. The model then composes an answer that draws only on the supplied evidence, and the application attaches citations derived from each retrieved chunk's document and page number.
+
+This design keeps answers faithful to the user's material. Because the model is instructed to rely on retrieved context, it is far less likely to fabricate facts, and every claim can be traced back to a real page in a real document that the user uploaded themselves.
