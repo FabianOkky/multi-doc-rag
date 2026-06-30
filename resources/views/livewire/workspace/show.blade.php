@@ -11,7 +11,7 @@
     </div>
 
     <flux:card>
-        <form wire:submit="upload" class="flex flex-col gap-4">
+        <form wire:submit="save" class="flex flex-col gap-4">
             <flux:heading size="lg">{{ __('Upload documents') }}</flux:heading>
             <flux:text class="text-sm">{{ __('PDF, DOCX, or TXT — up to 20MB each.') }}</flux:text>
 
@@ -28,10 +28,10 @@
             @endforeach
 
             <div class="flex items-center gap-3">
-                <flux:button type="submit" variant="primary" icon="arrow-up-tray" wire:loading.attr="disabled" wire:target="upload,files">
+                <flux:button type="submit" variant="primary" icon="arrow-up-tray" wire:loading.attr="disabled" wire:target="save,files">
                     {{ __('Upload') }}
                 </flux:button>
-                <flux:text class="text-sm" wire:loading wire:target="upload,files">
+                <flux:text class="text-sm" wire:loading wire:target="save,files">
                     {{ __('Working…') }}
                 </flux:text>
             </div>

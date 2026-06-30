@@ -23,7 +23,7 @@ test('a user can upload a document, creating a processing record and queuing the
 
     Livewire::test(Show::class, ['workspace' => $workspace])
         ->set('files', [$file])
-        ->call('upload')
+        ->call('save')
         ->assertHasNoErrors();
 
     $document = Document::sole();
@@ -55,7 +55,7 @@ test('uploading an unsupported file type fails validation and creates no documen
 
     Livewire::test(Show::class, ['workspace' => $workspace])
         ->set('files', [$file])
-        ->call('upload')
+        ->call('save')
         ->assertHasErrors('files.0');
 
     expect(Document::count())->toBe(0);
@@ -73,7 +73,7 @@ test('uploading without selecting a file fails validation', function () {
     $this->actingAs($user);
 
     Livewire::test(Show::class, ['workspace' => $workspace])
-        ->call('upload')
+        ->call('save')
         ->assertHasErrors('files');
 
     expect(Document::count())->toBe(0);

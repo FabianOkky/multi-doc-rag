@@ -77,7 +77,7 @@ class Show extends Component
     /**
      * Store each uploaded file, create its Document, and queue processing.
      */
-    public function upload(): void
+    public function save(): void
     {
         $this->authorize('update', $this->workspace);
 
