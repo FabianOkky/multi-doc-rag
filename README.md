@@ -71,7 +71,7 @@ flowchart LR
 | Language / framework | PHP 8.4, Laravel 13 |
 | Frontend | Livewire 4, Flux UI (free), Tailwind CSS 4 |
 | AI | Laravel AI SDK (`laravel/ai`) + Google Gemini — `gemini-2.5-flash` (text), `gemini-embedding-001` @ 768 dims (embeddings) |
-| Vector store | PostgreSQL + `pgvector` (e.g. Supabase) |
+| Vector store | PostgreSQL + `pgvector` (Docker locally; any managed Postgres with pgvector in prod) |
 | Parsing | `smalot/pdfparser` (PDF), `phpoffice/phpword` (DOCX), with optional Gemini Files API fallback |
 | Background work | Laravel Queue (`database` driver) |
 | Auth | Laravel Fortify (Livewire starter kit) |
@@ -81,12 +81,12 @@ flowchart LR
 
 ## ✅ Prerequisites
 
-- **PHP 8.3+** with the usual Laravel extensions
+- **PHP 8.3+** with the `pdo_pgsql` extension (plus the usual Laravel extensions)
 - **Composer 2**
 - **Node.js 18+** and npm
-- A **PostgreSQL database with the `pgvector` extension**. The free tier of
-  [Supabase](https://supabase.com) works well; the migration enables the
-  extension for you.
+- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** — runs the
+  PostgreSQL + `pgvector` database from the bundled `compose.yaml` (the migration
+  enables the extension for you). No local Postgres install needed.
 - A **Google Gemini API key** — get a free one at
   [Google AI Studio](https://aistudio.google.com/app/apikey).
 
@@ -99,28 +99,24 @@ flowchart LR
 git clone https://github.com/FabianOkky/multi-doc-rag.git
 cd multi-doc-rag
 
-# 2. Install dependencies
-composer install
-npm install
-
-# 3. Environment
+# 2. Environment — copy the template, then add your Gemini key
 cp .env.example .env
-php artisan key:generate
+#   edit .env  ->  GEMINI_API_KEY=...   (the DB defaults already match compose.yaml)
+
+# 3. Start the database (PostgreSQL + pgvector)
+docker compose up -d
+
+# 4. Install deps, generate the app key, migrate, and build the frontend
+composer run setup
 ```
 
-Now open `.env` and fill in your **database** and **Gemini** credentials
-(see [Configuration](#-configuration) below). Then:
+`composer run setup` runs `composer install`, copies `.env` if missing,
+`php artisan key:generate`, `php artisan migrate` (creates the tables, enables the
+`vector` extension, and builds the HNSW index), then `npm install && npm run build`.
 
-```bash
-# 4. Run migrations (creates tables + enables pgvector)
-php artisan migrate
-
-# 5. Build frontend assets
-npm run build
-```
-
-> 💡 The first three steps can be run in one go with `composer run setup` — just
-> make sure your `.env` database/Gemini values are set before it runs `migrate`.
+> 💡 **Port already in use?** If something already listens on `5432`, set
+> `DB_PORT=5433` in `.env` and re-run `docker compose up -d` (Compose maps the host
+> port from `DB_PORT`; the container always listens on 5432).
 
 ---
 
@@ -128,21 +124,25 @@ npm run build
 
 Set these in your `.env` (the full template is in `.env.example`):
 
-### Database — PostgreSQL + pgvector
+### Database — PostgreSQL + pgvector (Docker)
 
-For Supabase: create a project, then **Dashboard → Connect → "Session pooler"**
-(IPv4-friendly) and copy the values:
+The bundled `compose.yaml` runs a `pgvector` image locally, and the defaults in
+`.env.example` already match it — `docker compose up -d` is all you need:
 
 ```dotenv
 DB_CONNECTION=pgsql
-DB_HOST=aws-0-<region>.pooler.supabase.com
-DB_PORT=5432
-DB_DATABASE=postgres
-DB_USERNAME=postgres.<your-project-ref>
-DB_PASSWORD=<your-database-password>
-DB_SSLMODE=require
+DB_HOST=127.0.0.1
+DB_PORT=5432        # set 5433 if 5432 is already taken
+DB_DATABASE=multi_doc_rag
+DB_USERNAME=postgres
+DB_PASSWORD=secret
+DB_SSLMODE=prefer
 DB_SEARCH_PATH=public
 ```
+
+For a hosted database (production/demo), point `DB_*` at any managed Postgres that
+supports `pgvector` (e.g. [Neon](https://neon.tech), [Railway](https://railway.app))
+and set `DB_SSLMODE=require`.
 
 ### AI — Google Gemini
 
@@ -213,9 +213,9 @@ anything that isn't supported by your documents.
 The suite runs against PostgreSQL + pgvector in an isolated schema, so AI calls
 are faked — no API quota is used and no Gemini key is required for tests.
 
-Create a `.env.testing` pointing at a Postgres database (a separate Supabase
-project, or the same one with an isolated schema) and set `DB_SEARCH_PATH=testing`,
-then:
+`.env.testing` points at the same Docker database with `DB_SEARCH_PATH=testing`, so
+the suite (RefreshDatabase) only ever touches the isolated `testing` schema — never
+your development data. With the container running (`docker compose up -d`):
 
 ```bash
 php artisan test --compact      # or: composer test  (also runs Pint)
@@ -235,7 +235,7 @@ worker: php artisan queue:work --tries=3 --max-time=3600 --sleep=3 --backoff=10
 Run **both** a `web` and a `worker` process. In production set:
 
 - `APP_ENV=production`, `APP_DEBUG=false`, and a fresh `APP_KEY`
-- your PostgreSQL `DB_*` values (`DB_SSLMODE=require`)
+- a managed Postgres with `pgvector` in `DB_*` (`DB_SSLMODE=require`)
 - `GEMINI_API_KEY`
 - `QUEUE_CONNECTION=database`
 

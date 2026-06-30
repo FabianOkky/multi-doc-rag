@@ -1,0 +1,35 @@
+# PostgreSQL + pgvector for Multi-Doc RAG (local dev).
+# The pgvector image ships the extension prebuilt, so `CREATE EXTENSION vector`
+# (run by the migration via Schema::ensureVectorExtensionExists()) just works.
+#
+# Values are read from the project .env (Compose auto-loads it), so the database
+# name/user/password/port stay in a single place.
+#
+#   docker compose up -d      # start the database
+#   docker compose ps         # check health
+#   docker compose down       # stop (data is kept in the named volume)
+#   docker compose down -v     # stop AND delete all data
+
+services:
+  db:
+    image: pgvector/pgvector:pg17 # pgvector preinstalled; bump to pg18 if you like
+    container_name: multi_doc_rag_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-multi_doc_rag}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      # Host port comes from DB_PORT (default 5432). Set DB_PORT=5433 in .env if
+      # another Postgres already owns 5432. Container always listens on 5432.
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_DATABASE:-multi_doc_rag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
