@@ -3,11 +3,16 @@
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-zinc-50 dark:bg-zinc-900">
-        <header class="border-b border-zinc-200 dark:border-zinc-700">
-            <div class="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-4">
-                <a href="{{ route('home') }}" class="font-semibold text-zinc-900 dark:text-white" wire:navigate>
-                    {{ config('app.name', 'Laravel') }}
+    <body class="min-h-screen bg-zinc-50 antialiased dark:bg-zinc-950">
+        <header class="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+            <div class="mx-auto flex w-full max-w-4xl items-center justify-between gap-4 px-5 py-3.5 sm:px-8">
+                <a href="{{ route('home') }}" class="flex items-center gap-2.5" wire:navigate>
+                    <span class="flex aspect-square size-7 items-center justify-center rounded-lg bg-accent-content text-accent-foreground">
+                        <x-app-logo-icon class="size-4" />
+                    </span>
+                    <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                        {{ config('app.name', 'Multi-Doc RAG') }}
+                    </span>
                 </a>
 
                 @auth
@@ -22,9 +27,15 @@
             </div>
         </header>
 
-        <main class="mx-auto w-full max-w-3xl px-4 py-8">
+        <main class="mx-auto w-full max-w-4xl px-5 py-10 sm:px-8">
             {{ $slot }}
         </main>
+
+        <footer class="mx-auto w-full max-w-4xl px-5 pb-10 sm:px-8">
+            <p class="rule pt-6 text-xs text-zinc-400 dark:text-zinc-500">
+                {{ __('Shared from :app — answers here are grounded in the documents above.', ['app' => config('app.name', 'Multi-Doc RAG')]) }}
+            </p>
+        </footer>
 
         @fluxScripts
     </body>

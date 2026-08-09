@@ -1,48 +1,63 @@
-<div class="flex w-full flex-col gap-6">
-    <div class="flex flex-col gap-1">
-        <flux:heading size="xl">{{ __('Workspaces') }}</flux:heading>
-        <flux:text>{{ __('Each workspace holds its own documents and chat.') }}</flux:text>
-    </div>
+<div class="flex w-full flex-col gap-8">
+    <x-page-header
+        :eyebrow="__('Library')"
+        :title="__('Workspaces')"
+        :description="__('Each workspace holds its own documents and its own chat. Nothing is ever retrieved across them.')"
+    />
 
-    <form wire:submit="createWorkspace">
-        <div class="flex items-start gap-3">
-            <flux:input
-                wire:model="name"
-                :label="__('New workspace')"
-                :placeholder="__('e.g. Research papers')"
-                class="flex-1"
-            />
-            <flux:button type="submit" variant="primary" icon="plus" class="mt-6 shrink-0">
-                {{ __('Create') }}
-            </flux:button>
-        </div>
+    {{-- Create: a single inline field so the primary action is the first thing
+         you can act on, not a modal you have to open first. --}}
+    <form wire:submit="createWorkspace" class="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <flux:icon name="folder-plus" class="hidden size-5 shrink-0 text-zinc-400 sm:block dark:text-zinc-500" />
+
+        <flux:input
+            wire:model="name"
+            :placeholder="__('Name a new workspace — e.g. Research papers')"
+            class="flex-1"
+        />
+
+        <flux:button type="submit" variant="primary" icon="plus" class="shrink-0">
+            {{ __('Create') }}
+        </flux:button>
     </form>
 
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        @forelse ($workspaces as $workspace)
-            <flux:card wire:key="workspace-{{ $workspace->id }}" class="flex flex-col gap-4">
-                <a href="{{ route('workspaces.show', $workspace) }}" wire:navigate class="flex flex-col gap-1">
-                    <flux:heading size="lg">{{ $workspace->name }}</flux:heading>
-                    <flux:text class="text-sm">
-                        {{ __('Created :time', ['time' => $workspace->created_at->diffForHumans()]) }}
-                    </flux:text>
-                </a>
+    @if ($workspaces->isEmpty())
+        <div class="panel flex flex-col items-center gap-3 px-6 py-16 text-center">
+            <flux:icon name="folder" class="size-7 text-zinc-300 dark:text-zinc-600" />
+            <p class="text-sm font-medium text-zinc-900 dark:text-zinc-100">{{ __('No workspaces yet') }}</p>
+            <p class="max-w-xs text-sm text-zinc-500 dark:text-zinc-400">
+                {{ __('Create your first one above, then upload the documents you want to question.') }}
+            </p>
+        </div>
+    @else
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            @foreach ($workspaces as $workspace)
+                <div wire:key="workspace-{{ $workspace->id }}" class="panel group relative flex flex-col justify-between gap-6 p-5 transition-colors hover:border-zinc-300 dark:hover:border-zinc-700">
+                    <div class="flex flex-col gap-1.5">
+                        {{-- Stretched link: the whole card is the target, but the
+                             row of buttons below sits above it via z-index. --}}
+                        <a href="{{ route('workspaces.show', $workspace) }}" wire:navigate class="after:absolute after:inset-0">
+                            <h2 class="text-base font-semibold text-zinc-900 decoration-zinc-300 underline-offset-4 group-hover:underline dark:text-zinc-50 dark:decoration-zinc-600">
+                                {{ $workspace->name }}
+                            </h2>
+                        </a>
+                        <p class="text-xs text-zinc-500 dark:text-zinc-400">
+                            {{ __('Created :time', ['time' => $workspace->created_at->diffForHumans()]) }}
+                        </p>
+                    </div>
 
-                <div class="flex gap-2">
-                    <flux:button size="sm" variant="ghost" icon="pencil-square" wire:click="startRename({{ $workspace->id }})">
-                        {{ __('Rename') }}
-                    </flux:button>
-                    <flux:button size="sm" variant="ghost" icon="trash" wire:click="confirmDelete({{ $workspace->id }})">
-                        {{ __('Delete') }}
-                    </flux:button>
+                    <div class="relative z-10 flex items-center gap-1">
+                        <flux:button size="xs" variant="ghost" icon="pencil-square" wire:click="startRename({{ $workspace->id }})">
+                            {{ __('Rename') }}
+                        </flux:button>
+                        <flux:button size="xs" variant="ghost" icon="trash" wire:click="confirmDelete({{ $workspace->id }})">
+                            {{ __('Delete') }}
+                        </flux:button>
+                    </div>
                 </div>
-            </flux:card>
-        @empty
-            <flux:text class="col-span-full">
-                {{ __('No workspaces yet. Create your first one above.') }}
-            </flux:text>
-        @endforelse
-    </div>
+            @endforeach
+        </div>
+    @endif
 
     <flux:modal wire:model="showEditModal" class="max-w-md">
         <form wire:submit="rename" class="flex flex-col gap-4">

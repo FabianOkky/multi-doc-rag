@@ -6,9 +6,11 @@ use App\Livewire\Workspace\Index as WorkspaceIndex;
 use App\Livewire\Workspace\Show as WorkspaceShow;
 use Illuminate\Support\Facades\Route;
 
+// Signed-in users go straight to their workspaces; everyone else gets the
+// public landing page explaining what the app does.
 Route::get('/', fn () => auth()->check()
     ? redirect()->route('dashboard')
-    : redirect()->route('login'))->name('home');
+    : view('welcome'))->name('home');
 
 // Public read-only share link — no auth. The component 404s unless the token
 // belongs to a workspace with sharing enabled.

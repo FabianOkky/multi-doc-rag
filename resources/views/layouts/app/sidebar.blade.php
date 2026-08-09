@@ -3,17 +3,17 @@
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-white dark:bg-zinc-800">
-        <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
+    <body class="min-h-screen bg-zinc-50 antialiased dark:bg-zinc-950">
+        <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
                 <flux:sidebar.collapse class="lg:hidden" />
             </flux:sidebar.header>
 
             <flux:sidebar.nav>
-                <flux:sidebar.group :heading="__('Platform')" class="grid">
+                <flux:sidebar.group :heading="__('Library')" class="grid">
                     <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
-                        {{ __('Dashboard') }}
+                        {{ __('Overview') }}
                     </flux:sidebar.item>
 
                     <flux:sidebar.item icon="folder" :href="route('workspaces.index')" :current="request()->routeIs('workspaces.*')" wire:navigate>
@@ -24,11 +24,18 @@
 
             <flux:spacer />
 
+            {{-- A quiet reminder of the one promise this app makes. --}}
+            <div class="mx-2 mb-3 hidden rounded-lg border border-zinc-200 bg-zinc-50 p-3 lg:block dark:border-zinc-800 dark:bg-zinc-950/60">
+                <p class="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
+                    {{ __('Answers come only from your uploaded documents — each one cites the file and page it came from.') }}
+                </p>
+            </div>
+
             <x-desktop-user-menu class="hidden lg:block" :name="auth()->user()->name" />
         </flux:sidebar>
 
         <!-- Mobile User Menu -->
-        <flux:header class="lg:hidden">
+        <flux:header class="border-b border-zinc-200 bg-white lg:hidden dark:border-zinc-800 dark:bg-zinc-900">
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
 
             <flux:spacer />
