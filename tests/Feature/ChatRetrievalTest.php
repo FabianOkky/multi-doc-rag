@@ -47,7 +47,7 @@ test('scoped retrieval returns the relevant chunk and never leaks another worksp
 
     // The other workspace's content is absent from both context and citations.
     expect($result->context)
-        ->toContain('panduan.pdf hal. 3')
+        ->toContain('panduan.pdf, page 3')
         ->toContain('Prosedur lengkap dijelaskan di sini.')
         ->not->toContain('rahasia.pdf')
         ->not->toContain('Data rahasia milik workspace lain.');

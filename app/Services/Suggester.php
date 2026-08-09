@@ -7,6 +7,7 @@ use App\Models\Document;
 use App\Models\Workspace;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 /**
  * Produces a few suggested starter questions for a workspace from its ready
@@ -41,41 +42,66 @@ class Suggester
             return [];
         }
 
-        return Cache::remember(
-            $this->cacheKey($workspace, $documents),
-            self::CACHE_TTL,
-            fn (): array => $this->generate($documents),
-        );
+        $language = $workspace->answerLanguage();
+        $key = $this->cacheKey($workspace, $documents, $language);
+
+        $cached = Cache::get($key);
+
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $suggestions = $this->generate($documents, $language);
+
+        // Only a real answer is worth remembering: caching a failed prompt would
+        // hide the chips for a whole day over one rate-limited minute.
+        if ($suggestions !== []) {
+            Cache::put($key, $suggestions, self::CACHE_TTL);
+        }
+
+        return $suggestions;
     }
 
     /**
-     * A cache key scoped to the workspace and the exact summaries in play, so the
-     * suggestions regenerate whenever those summaries change.
+     * A cache key scoped to the workspace, the exact summaries in play, and the
+     * language they should be asked in, so the suggestions regenerate whenever
+     * those summaries or that language change.
      *
      * @param  Collection<int, Document>  $documents
      */
-    private function cacheKey(Workspace $workspace, Collection $documents): string
+    private function cacheKey(Workspace $workspace, Collection $documents, AnswerLanguage $language): string
     {
         $fingerprint = md5($documents
             ->map(fn (Document $document): string => $document->id.':'.$document->summary)
             ->implode('|'));
 
-        return "workspace:{$workspace->id}:suggestions:{$fingerprint}";
+        return "workspace:{$workspace->id}:suggestions:{$language->value}:{$fingerprint}";
     }
 
     /**
-     * Prompt the agent once with the document summaries and return its questions.
+     * Prompt the agent once with the document summaries and return its questions,
+     * or an empty list if the provider is unavailable.
+     *
+     * Starter chips are a convenience, never the point of the page: a rate-limited
+     * provider (or a fallback model that cannot produce structured output) must
+     * cost the user their suggestions, not their whole workspace.
      *
      * @param  Collection<int, Document>  $documents
      * @return array<int, string>
      */
-    private function generate(Collection $documents): array
+    private function generate(Collection $documents, AnswerLanguage $language): array
     {
         $summaries = $documents
             ->map(fn (Document $document): string => "- {$document->filename}: {$document->summary}")
             ->implode("\n");
 
-        $response = (new SuggestionAgent)->prompt($summaries, provider: config('rag.text_failover'));
+        try {
+            $response = (new SuggestionAgent($language))->prompt($summaries, provider: config('rag.text_failover'));
+        } catch (Throwable $e) {
+            report($e);
+
+            return [];
+        }
 
         return (new Collection($response['questions'] ?? []))
             ->map(fn (mixed $question): string => trim((string) $question))

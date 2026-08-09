@@ -140,7 +140,7 @@ test('the shared page shows the conversation read-only', function () {
         ->assertOk()
         ->assertSee('Apa inti dari dokumen ini?')
         ->assertSee('Jawaban yang bersumber dari dokumen.')
-        ->assertSee('hal.')   // citation page label
+        ->assertSee('p. 3')   // citation page label
         // ...but a visitor cannot send new messages: there is no composer.
         ->assertDontSee('wire:submit="sendMessage"', escape: false);
 });

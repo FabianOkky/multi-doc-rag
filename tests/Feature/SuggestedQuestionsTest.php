@@ -109,3 +109,36 @@ test('suggestions are generated once per workspace and then served from cache', 
 
     SuggestionAgent::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'Ringkasan dokumen.'));
 });
+
+test('a failing suggestion prompt degrades to no chips instead of breaking the chat', function () {
+    // No fake is registered and no API key is configured, so the prompt throws.
+    // The chips are a convenience: losing them must not cost the user the page.
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->for($user)->create();
+    Document::factory()->for($workspace)->ready()->create(['summary' => 'Sebuah ringkasan dokumen.']);
+
+    $this->actingAs($user);
+
+    Livewire::test(Window::class, ['workspace' => $workspace])
+        ->call('loadSuggestions')
+        ->assertOk()
+        ->assertSet('suggestions', []);
+});
+
+test('a failed suggestion prompt is not cached, so the next visit retries', function () {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->for($user)->create();
+    Document::factory()->for($workspace)->ready()->create(['summary' => 'Ringkasan dokumen.']);
+
+    $suggester = app(Suggester::class);
+
+    // First call fails (no fake registered) and must leave the cache empty...
+    expect($suggester->for($workspace))->toBe([]);
+
+    // ...so once the provider recovers, the very next call succeeds.
+    SuggestionAgent::fake([
+        ['questions' => ['Pertanyaan A?', 'Pertanyaan B?', 'Pertanyaan C?']],
+    ]);
+
+    expect($suggester->for($workspace))->toBe(['Pertanyaan A?', 'Pertanyaan B?', 'Pertanyaan C?']);
+});

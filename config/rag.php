@@ -32,6 +32,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Cross-lingual retrieval
+    |--------------------------------------------------------------------------
+    |
+    | Embeddings are only weakly cross-lingual: an Indonesian question embedded
+    | on its own frequently misses an English passage that answers it perfectly.
+    | With this enabled, every question is first rewritten into Indonesian AND
+    | English (one small, cached prompt via QueryTranslationAgent), each phrasing
+    | is searched, and the hits are merged by best distance.
+    |
+    | Documents are never translated, so citations always point at the user's own
+    | text. Turn this off to save one prompt per distinct question if your corpus
+    | and your users only ever speak one language.
+    |
+    */
+
+    'multilingual_query' => (bool) env('RAG_MULTILINGUAL_QUERY', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Parsing
     |--------------------------------------------------------------------------
     |

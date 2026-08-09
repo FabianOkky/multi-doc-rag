@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Agents\SummaryAgent;
 use App\Models\Document;
+use App\Services\AnswerLanguage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Str;
@@ -57,8 +58,10 @@ class GenerateSummary implements ShouldQueue
             return null;
         }
 
+        $language = $this->document->workspace?->answerLanguage() ?? AnswerLanguage::Auto;
+
         try {
-            $summary = trim((new SummaryAgent)->prompt($text, provider: config('rag.text_failover'))->text);
+            $summary = trim((new SummaryAgent($language))->prompt($text, provider: config('rag.text_failover'))->text);
 
             return $summary !== '' ? $summary : null;
         } catch (Throwable $e) {

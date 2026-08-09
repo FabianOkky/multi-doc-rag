@@ -31,6 +31,13 @@
             No SQLite anywhere — vector search requires Postgres+pgvector.
         -->
         <env name="MAIL_MAILER" value="array"/>
+        <!--
+            Cross-lingual retrieval costs one QueryTranslationAgent prompt per distinct
+            question. It stays off for the suite as a whole so no test accidentally
+            reaches a provider; BilingualRetrievalTest turns it back on explicitly,
+            with the agent faked.
+        -->
+        <env name="RAG_MULTILINGUAL_QUERY" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

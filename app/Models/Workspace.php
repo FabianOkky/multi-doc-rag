@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\AnswerLanguage;
 use Database\Factories\WorkspaceFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['name'])]
+#[Fillable(['name', 'answer_language'])]
 class Workspace extends Model
 {
     /** @use HasFactory<WorkspaceFactory> */
@@ -30,7 +31,17 @@ class Workspace extends Model
     {
         return [
             'is_shared' => 'boolean',
+            'answer_language' => AnswerLanguage::class,
         ];
+    }
+
+    /**
+     * The language answers, summaries, and suggestions are written in for this
+     * workspace. Retrieval is cross-lingual either way; this only controls output.
+     */
+    public function answerLanguage(): AnswerLanguage
+    {
+        return $this->answer_language ?? AnswerLanguage::Auto;
     }
 
     /**

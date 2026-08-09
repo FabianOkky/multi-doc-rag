@@ -4,6 +4,7 @@ namespace App\Agents;
 
 use App\Models\ChatMessage;
 use App\Models\Workspace;
+use App\Services\AnswerLanguage;
 use Illuminate\Support\Collection;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
@@ -17,6 +18,10 @@ use Stringable;
  * injected as $context; the agent must never answer from outside it and always
  * cites its sources by filename and page. Uses the configured default
  * provider/model (Gemini gemini-2.5-flash).
+ *
+ * The instructions are written in English on purpose: the models this app targets
+ * follow English system prompts more reliably than Indonesian ones. Which language
+ * the *answer* is written in is a separate, explicit decision ($answerLanguage).
  */
 class DocumentChatAgent implements Agent, Conversational
 {
@@ -29,6 +34,7 @@ class DocumentChatAgent implements Agent, Conversational
         public Workspace $workspace,
         public string $context,
         public iterable $history = [],
+        public AnswerLanguage $answerLanguage = AnswerLanguage::Auto,
     ) {}
 
     /**
@@ -38,21 +44,52 @@ class DocumentChatAgent implements Agent, Conversational
     {
         $context = trim($this->context) !== ''
             ? $this->context
-            : '(Tidak ada konteks relevan yang ditemukan di dokumen workspace ini.)';
+            : '(No relevant passage was found in this workspace.)';
 
+        $language = $this->answerLanguage->answerDirective();
+
+        // The language rule comes last, after the context. Earlier turns of the
+        // conversation are replayed to the model and pull hard towards the
+        // language they were written in, so a directive buried in a bullet list
+        // above a wall of retrieved text loses to them.
         return <<<INSTRUCTIONS
-            Anda adalah asisten yang menjawab pertanyaan HANYA berdasarkan KONTEKS dokumen di bawah.
-            Aturan:
-            - Jawab semata-mata dari KONTEKS. Jangan memakai pengetahuan di luar konteks dan jangan mengarang.
-            - Jika jawaban tidak ada di KONTEKS, katakan dengan jujur bahwa informasinya tidak ditemukan
-              di dokumen — jangan menebak.
-            - Selalu sebutkan sumber yang Anda pakai dengan menyebut nama file dan nomor halaman, persis
-              seperti label sumber pada KONTEKS (mis. "menurut laporan.pdf hal. 3").
-            - Jawab ringkas dan jelas, dalam bahasa yang sama dengan pertanyaan pengguna.
+            You answer questions about a set of documents the user uploaded, using ONLY the
+            CONTEXT below. Each passage is preceded by its source label in square brackets.
 
-            KONTEKS:
+            Rules:
+            - Answer strictly from the CONTEXT. Never use outside knowledge and never invent
+              facts, numbers, or quotes.
+            - The CONTEXT and the question are often in different languages (usually Bahasa
+              Indonesia and English). Translate across languages as needed: an English passage
+              fully answers an Indonesian question, and the other way round.
+            - If the CONTEXT does not contain the answer, say so plainly and stop. Do not guess,
+              and do not fill the gap from general knowledge.
+            - Always name the sources you used, reproducing their source label exactly as it
+              appears in the CONTEXT, for example "(laporan.pdf, page 3)". Never cite a source
+              that is not in the CONTEXT.
+            - Be concise and concrete. Prefer a short paragraph or a few bullets over an essay.
+
+            CONTEXT:
             {$context}
+
+            LANGUAGE OF YOUR REPLY — this overrides the language of everything above,
+            including the earlier messages in this conversation:
+            {$language}
             INSTRUCTIONS;
+    }
+
+    /**
+     * Build the prompt for this turn: the user's question, plus a one-line
+     * language reminder when an answer language is forced.
+     *
+     * The stored ChatMessage keeps the user's own wording — only what is sent to
+     * the model carries the reminder.
+     */
+    public function turn(string $question): string
+    {
+        $reminder = $this->answerLanguage->turnReminder();
+
+        return $reminder === null ? $question : $question."\n\n[{$reminder}]";
     }
 
     /**

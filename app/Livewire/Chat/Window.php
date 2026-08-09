@@ -6,6 +6,7 @@ use App\Agents\DocumentChatAgent;
 use App\Models\ChatMessage;
 use App\Models\ChatSession;
 use App\Models\Workspace;
+use App\Services\AnswerLanguage;
 use App\Services\Retriever;
 use App\Services\Suggester;
 use Illuminate\Contracts\View\View;
@@ -46,6 +47,14 @@ class Window extends Component
      */
     public array $suggestions = [];
 
+    /**
+     * Which language answers are written in — "auto" mirrors the question, "id"
+     * and "en" force one. Retrieval is cross-lingual either way, so this only
+     * changes the reply: a question in Indonesian can be answered in English,
+     * which reads better from the smaller models this app can fall back to.
+     */
+    public string $answerLanguage = AnswerLanguage::Auto->value;
+
     public function mount(Workspace $workspace): void
     {
         // Defense in depth: the page already authorizes the owner, but the chat
@@ -54,6 +63,23 @@ class Window extends Component
 
         $this->workspace = $workspace;
         $this->session = ChatSession::firstOrCreate(['workspace_id' => $workspace->id]);
+        $this->answerLanguage = $workspace->answerLanguage()->value;
+    }
+
+    /**
+     * Persist the picked answer language on the workspace so it also applies to
+     * future summaries and suggestions, not just this browser tab.
+     */
+    public function updatedAnswerLanguage(string $value): void
+    {
+        $this->authorize('update', $this->workspace);
+
+        $language = AnswerLanguage::fromValue($value);
+
+        $this->workspace->update(['answer_language' => $language]);
+
+        $this->answerLanguage = $language->value;
+        $this->suggestions = [];
     }
 
     /**
@@ -118,11 +144,16 @@ class Window extends Component
 
         $result = app(Retriever::class)->retrieve($this->workspace, $question);
 
-        $agent = new DocumentChatAgent($this->workspace, $result->context, $this->history());
+        $agent = new DocumentChatAgent(
+            $this->workspace,
+            $result->context,
+            $this->history(),
+            AnswerLanguage::fromValue($this->answerLanguage),
+        );
 
         $answer = '';
 
-        foreach ($agent->stream($question, provider: config('rag.text_failover')) as $event) {
+        foreach ($agent->stream($agent->turn($question), provider: config('rag.text_failover')) as $event) {
             if ($event instanceof TextDelta) {
                 $answer .= $event->delta;
                 $this->stream(to: 'answer', content: $event->delta);
@@ -162,6 +193,7 @@ class Window extends Component
     {
         return view('livewire.chat.window', [
             'messages' => $this->session->messages()->oldest('id')->get(),
+            'languages' => AnswerLanguage::options(),
         ]);
     }
 }
