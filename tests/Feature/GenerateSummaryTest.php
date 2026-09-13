@@ -6,7 +6,7 @@ use App\Models\Document;
 use App\Models\DocumentChunk;
 
 test('it summarizes a document with a faked agent and marks it ready', function () {
-    SummaryAgent::fake(['Ini ringkasan dokumen dalam beberapa kalimat yang faktual.']);
+    SummaryAgent::fake(['A factual summary of the document in a few sentences.']);
 
     $document = Document::factory()->create([
         'status' => Document::STATUS_PROCESSING,
@@ -14,17 +14,17 @@ test('it summarizes a document with a faked agent and marks it ready', function 
     ]);
 
     DocumentChunk::factory()->forDocument($document)->count(3)->create([
-        'content' => 'Konten contoh yang akan diringkas oleh agen.',
+        'content' => 'Sample content for the agent to summarize.',
     ]);
 
     GenerateSummary::dispatchSync($document);
 
     expect($document->refresh()->summary)
-        ->toBe('Ini ringkasan dokumen dalam beberapa kalimat yang faktual.')
+        ->toBe('A factual summary of the document in a few sentences.')
         ->and($document->status)->toBe(Document::STATUS_READY);
 
     // The agent was prompted with the document's own text — never the real Gemini API.
-    SummaryAgent::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'Konten contoh'));
+    SummaryAgent::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'Sample content'));
 });
 
 test('it marks a chunkless document ready without ever prompting the agent', function () {
@@ -55,7 +55,7 @@ test('a failed summary call still leaves the document ready with no summary', fu
     ]);
 
     DocumentChunk::factory()->forDocument($document)->create([
-        'content' => 'Teks apa pun untuk diringkas.',
+        'content' => 'Any text at all to summarize.',
     ]);
 
     GenerateSummary::dispatchSync($document);

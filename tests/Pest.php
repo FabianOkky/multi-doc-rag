@@ -29,8 +29,12 @@ pest()->extend(TestCase::class)
 |
 */
 
-expect()->extend('toBeOne', function () {
-    return $this->toBe(1);
+expect()->extend('toBeCitation', function (int $documentId, string $filename, ?int $page) {
+    return $this->toMatchArray([
+        'document_id' => $documentId,
+        'filename' => $filename,
+        'page_number' => $page,
+    ]);
 });
 
 /*
@@ -44,9 +48,31 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Run a callback with Livewire's streamed output captured and discarded.
+ *
+ * Livewire streams a chat answer by echoing each delta straight out, which is
+ * exactly right in a browser but floods the test runner's report with raw
+ * stream directives. Buffering keeps the suite readable without changing what
+ * the component does or what it asserts.
+ *
+ * @template TReturn
+ *
+ * @param  callable(): TReturn  $callback
+ * @return TReturn
+ */
+function captureStreamedOutput(callable $callback): mixed
 {
-    // ..
+    // Livewire calls ob_flush() after every delta, which would push a plain
+    // buffer's contents straight through to the terminal. A buffer with a
+    // callback that returns an empty string swallows those flushes too.
+    ob_start(fn (string $buffer): string => '');
+
+    try {
+        return $callback();
+    } finally {
+        ob_end_clean();
+    }
 }
 
 /**

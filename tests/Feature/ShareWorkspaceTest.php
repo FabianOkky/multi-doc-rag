@@ -78,16 +78,19 @@ test('a shared workspace link is reachable without logging in', function () {
     $workspace->enableSharing();
 
     Document::factory()->for($workspace)->ready()->create([
-        'filename' => 'laporan-publik.pdf',
-        'summary' => 'Ringkasan dokumen yang dibagikan ke publik.',
+        'filename' => 'public-report.pdf',
+        'summary' => 'A summary of the document shared with the public.',
     ]);
 
     // No actingAs(): this is an anonymous visitor.
     $this->get(route('workspaces.shared', $workspace->share_token))
         ->assertOk()
+        ->assertSee('<meta name="robots" content="noindex,nofollow,noarchive"', escape: false)
         ->assertSee('Shared research')
-        ->assertSee('laporan-publik.pdf')
-        ->assertSee('Ringkasan dokumen yang dibagikan ke publik.');
+        ->assertSee('public-report.pdf')
+        ->assertSee('A summary of the document shared with the public.');
+
+    expect(file_get_contents(public_path('robots.txt')))->toContain('Disallow: /s/');
 });
 
 test('a disabled share link returns 404', function () {
@@ -109,11 +112,11 @@ test('the shared page shows no owner actions', function () {
     $workspace = Workspace::factory()->for($user)->create();
     $workspace->enableSharing();
 
-    Document::factory()->for($workspace)->ready()->create(['filename' => 'sumber.pdf']);
+    Document::factory()->for($workspace)->ready()->create(['filename' => 'source.pdf']);
 
     $this->get(route('workspaces.shared', $workspace->share_token))
         ->assertOk()
-        ->assertSee('sumber.pdf')
+        ->assertSee('source.pdf')
         ->assertDontSee('Upload documents')                       // upload form (owner only)
         ->assertDontSee('wire:model.live="isShared"', escape: false) // share toggle (owner only)
         ->assertDontSee('deleteDocument', escape: false);          // delete button (owner only)
@@ -124,22 +127,22 @@ test('the shared page shows the conversation read-only', function () {
     $workspace = Workspace::factory()->for($user)->create();
     $workspace->enableSharing();
 
-    $document = Document::factory()->for($workspace)->ready()->create(['filename' => 'sumber.pdf']);
+    $document = Document::factory()->for($workspace)->ready()->create(['filename' => 'source.pdf']);
     $session = ChatSession::factory()->for($workspace)->create();
     $session->messages()->create([
         'role' => ChatMessage::ROLE_USER,
-        'content' => 'Apa inti dari dokumen ini?',
+        'content' => 'What is the gist of this document?',
     ]);
     $session->messages()->create([
         'role' => ChatMessage::ROLE_ASSISTANT,
-        'content' => 'Jawaban yang bersumber dari dokumen.',
-        'citations' => [['document_id' => $document->id, 'filename' => 'sumber.pdf', 'page_number' => 3]],
+        'content' => 'An answer sourced from the document.',
+        'citations' => [['document_id' => $document->id, 'filename' => 'source.pdf', 'page_number' => 3]],
     ]);
 
     $this->get(route('workspaces.shared', $workspace->share_token))
         ->assertOk()
-        ->assertSee('Apa inti dari dokumen ini?')
-        ->assertSee('Jawaban yang bersumber dari dokumen.')
+        ->assertSee('What is the gist of this document?')
+        ->assertSee('An answer sourced from the document.')
         ->assertSee('p. 3')   // citation page label
         // ...but a visitor cannot send new messages: there is no composer.
         ->assertDontSee('wire:submit="sendMessage"', escape: false);

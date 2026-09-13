@@ -1,8 +1,10 @@
 <?php
 
 use App\Livewire\Workspace\Index;
+use App\Models\Document;
 use App\Models\User;
 use App\Models\Workspace;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 test('guests are redirected to login from the workspaces index', function () {
@@ -46,6 +48,24 @@ test('the workspace name is required', function () {
         ->assertHasErrors(['name' => 'required']);
 
     expect(Workspace::count())->toBe(0);
+});
+
+test('workspace names are trimmed before create and rename', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    Livewire::test(Index::class)
+        ->set('name', '  Research papers  ')
+        ->call('createWorkspace');
+
+    $workspace = Workspace::sole();
+
+    Livewire::test(Index::class)
+        ->call('startRename', $workspace->id)
+        ->set('editName', '  Annual reports  ')
+        ->call('rename');
+
+    expect($workspace->fresh()->name)->toBe('Annual reports');
 });
 
 test('the index only lists the current user workspaces', function () {
@@ -121,8 +141,12 @@ test('a user cannot rename another user workspace by spoofing the id', function 
 });
 
 test('a user can delete their own workspace', function () {
+    Storage::fake('local');
+
     $user = User::factory()->create();
     $workspace = Workspace::factory()->for($user)->create();
+    $document = Document::factory()->for($workspace)->create(['file_url' => 'documents/workspace-file.txt']);
+    Storage::disk('local')->put($document->file_url, 'contents');
 
     $this->actingAs($user);
 
@@ -134,6 +158,7 @@ test('a user can delete their own workspace', function () {
         ->assertSet('showDeleteModal', false);
 
     expect(Workspace::find($workspace->id))->toBeNull();
+    Storage::disk('local')->assertMissing('documents/workspace-file.txt');
 });
 
 test('a user cannot open the delete modal for another user workspace', function () {

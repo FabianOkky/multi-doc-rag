@@ -14,15 +14,15 @@ test('the workspace page shows a ready document with its summary and status', fu
     $workspace = Workspace::factory()->for($user)->create();
 
     Document::factory()->for($workspace)->ready()->create([
-        'filename' => 'laporan-tahunan.pdf',
-        'summary' => 'Dokumen ini merangkum kinerja keuangan tahun berjalan.',
+        'filename' => 'annual-report.pdf',
+        'summary' => 'This document summarizes the financial performance of the current year.',
     ]);
 
     $this->actingAs($user);
 
     Livewire::test(Show::class, ['workspace' => $workspace])
-        ->assertSee('laporan-tahunan.pdf')
-        ->assertSee('Dokumen ini merangkum kinerja keuangan tahun berjalan.')
+        ->assertSee('annual-report.pdf')
+        ->assertSee('This document summarizes the financial performance of the current year.')
         ->assertSee('Ready');
 });
 
@@ -31,7 +31,7 @@ test('a processing document is shown in a loading state without a summary', func
     $workspace = Workspace::factory()->for($user)->create();
 
     Document::factory()->for($workspace)->create([
-        'filename' => 'sedang-diproses.pdf',
+        'filename' => 'being-processed.pdf',
         'status' => Document::STATUS_PROCESSING,
         'summary' => null,
     ]);
@@ -39,7 +39,7 @@ test('a processing document is shown in a loading state without a summary', func
     $this->actingAs($user);
 
     Livewire::test(Show::class, ['workspace' => $workspace])
-        ->assertSee('sedang-diproses.pdf')
+        ->assertSee('being-processed.pdf')
         ->assertSee('Processing')
         ->assertSee('Generating summary');
 });
@@ -70,13 +70,13 @@ test('a failed document shows a retry control', function () {
     $workspace = Workspace::factory()->for($user)->create();
 
     Document::factory()->for($workspace)->failed()->create([
-        'filename' => 'gagal-diproses.pdf',
+        'filename' => 'failed-to-process.pdf',
     ]);
 
     $this->actingAs($user);
 
     Livewire::test(Show::class, ['workspace' => $workspace])
-        ->assertSee('gagal-diproses.pdf')
+        ->assertSee('failed-to-process.pdf')
         ->assertSee('Failed')
         ->assertSee('Retry')
         ->assertSeeHtml('wire:click="retryDocument');
@@ -99,6 +99,26 @@ test('the workspace owner can retry a failed document', function () {
     expect($document->fresh()->status)->toBe(Document::STATUS_PROCESSING);
     Queue::assertPushed(ParseAndEmbedDocument::class);
 });
+
+test('a ready or processing document cannot be queued through the retry action', function (string $status) {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->for($user)->create();
+    $document = Document::factory()->for($workspace)->create(['status' => $status]);
+
+    $this->actingAs($user);
+
+    Livewire::test(Show::class, ['workspace' => $workspace])
+        ->call('retryDocument', $document->id)
+        ->assertStatus(409);
+
+    expect($document->fresh()->status)->toBe($status);
+    Queue::assertNothingPushed();
+})->with([
+    'ready' => Document::STATUS_READY,
+    'processing' => Document::STATUS_PROCESSING,
+]);
 
 test('a user cannot retry a document from a workspace they do not own', function () {
     Queue::fake();

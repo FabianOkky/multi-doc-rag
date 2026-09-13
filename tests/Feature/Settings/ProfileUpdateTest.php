@@ -1,7 +1,10 @@
 <?php
 
 use App\Livewire\Settings\Profile;
+use App\Models\Document;
 use App\Models\User;
+use App\Models\Workspace;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 test('profile page is displayed', function () {
@@ -45,7 +48,12 @@ test('email verification status is unchanged when email address is unchanged', f
 });
 
 test('user can delete their account', function () {
+    Storage::fake('local');
+
     $user = User::factory()->create();
+    $workspace = Workspace::factory()->for($user)->create();
+    $document = Document::factory()->for($workspace)->create(['file_url' => 'documents/account-file.txt']);
+    Storage::disk('local')->put($document->file_url, 'contents');
 
     $this->actingAs($user);
 
@@ -59,6 +67,7 @@ test('user can delete their account', function () {
 
     expect($user->fresh())->toBeNull();
     expect(auth()->check())->toBeFalse();
+    Storage::disk('local')->assertMissing('documents/account-file.txt');
 });
 
 test('correct password must be provided to delete account', function () {

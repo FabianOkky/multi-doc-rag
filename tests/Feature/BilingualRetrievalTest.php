@@ -19,6 +19,13 @@ use Livewire\Livewire;
 // the translation agent is faked.
 beforeEach(fn () => config(['rag.multilingual_query' => true]));
 
+test('automatic fallback messages follow the question language without an AI call', function () {
+    expect(AnswerLanguage::Auto->unavailableMessage('Apa isi dokumen ini?'))
+        ->toStartWith('Maaf, jawaban belum dapat dibuat')
+        ->and(AnswerLanguage::Auto->unavailableMessage('What is in this document?'))
+        ->toStartWith('Sorry, an answer could not be generated');
+});
+
 test('an indonesian question retrieves an english passage it would otherwise miss', function () {
     // The Indonesian wording embeds to unit(1); its English translation embeds to
     // unit(0), which is the only vector the stored (English) chunk matches. If the
@@ -98,8 +105,12 @@ test('a translated question is only prompted for once and then served from cache
 });
 
 test('retrieval falls back to the users own wording when translation fails', function () {
-    // No fake is registered and no API key is configured, so the prompt throws —
-    // the chat must still work, just without the cross-lingual second phrasing.
+    QueryTranslationAgent::fake(function (): never {
+        throw new RuntimeException('Translation provider unavailable.');
+    });
+
+    // The provider failure is faked so the test stays offline and deterministic;
+    // chat must still work, just without the cross-lingual second phrasing.
     Embeddings::fake([[unitVector(0)]]);
 
     $workspace = Workspace::factory()->create();
@@ -113,6 +124,8 @@ test('retrieval falls back to the users own wording when translation fails', fun
 
     $result = app(Retriever::class)->retrieve($workspace, 'Apa isi dokumennya?');
 
+    // The Indonesian wording here is deliberate: this test is about an Indonesian
+    // question still finding its answer when the translation step is unavailable.
     expect($result->chunks)->toHaveCount(1)
         ->and($result->chunks->first()->content)->toBe('Isi dokumen yang relevan.');
 
@@ -144,12 +157,12 @@ test('the workspace answer language is persisted and reaches the chat agent', fu
 
     $this->actingAs($user);
 
-    Livewire::test(Window::class, ['workspace' => $workspace])
+    captureStreamedOutput(fn () => Livewire::test(Window::class, ['workspace' => $workspace])
         ->assertSet('answerLanguage', AnswerLanguage::Auto->value)
         ->set('answerLanguage', AnswerLanguage::English->value)
         ->set('question', 'Apa isinya?')
         ->call('sendMessage')
-        ->call('streamAnswer');
+        ->call('streamAnswer'));
 
     // Persisted on the workspace, so summaries and suggestions follow it too.
     expect($workspace->fresh()->answer_language)->toBe(AnswerLanguage::English);
@@ -172,10 +185,10 @@ test('the default answer language tells the agent to mirror the question', funct
 
     $this->actingAs($user);
 
-    Livewire::test(Window::class, ['workspace' => $workspace])
+    captureStreamedOutput(fn () => Livewire::test(Window::class, ['workspace' => $workspace])
         ->set('question', 'Apa isinya?')
         ->call('sendMessage')
-        ->call('streamAnswer');
+        ->call('streamAnswer'));
 
     DocumentChatAgent::assertPrompted(fn ($prompt) => str_contains(
         (string) $prompt->agent->instructions(),

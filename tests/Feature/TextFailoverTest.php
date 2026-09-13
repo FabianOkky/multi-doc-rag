@@ -22,7 +22,7 @@ test('text generation fails over to the backup provider when the primary is rate
             throw RateLimitedException::forProvider('gemini', 429);
         }
 
-        return 'Ringkasan dari penyedia cadangan saat kuota utama habis.';
+        return 'A summary from the backup provider after the primary ran out of quota.';
     });
 
     $document = Document::factory()->create([
@@ -31,7 +31,7 @@ test('text generation fails over to the backup provider when the primary is rate
     ]);
 
     DocumentChunk::factory()->forDocument($document)->create([
-        'content' => 'Teks dokumen yang akan diringkas.',
+        'content' => 'Document text waiting to be summarized.',
     ]);
 
     GenerateSummary::dispatchSync($document);
@@ -39,7 +39,7 @@ test('text generation fails over to the backup provider when the primary is rate
     // The summary the user sees came from the backup provider — the app kept
     // working through a primary-provider rate limit.
     expect($document->refresh()->summary)
-        ->toBe('Ringkasan dari penyedia cadangan saat kuota utama habis.')
+        ->toBe('A summary from the backup provider after the primary ran out of quota.')
         ->and($document->status)->toBe(Document::STATUS_READY);
 });
 
@@ -47,7 +47,7 @@ test('a single-provider chain (the default) generates normally with no failover'
     // The shipped default is Gemini only; behavior is unchanged from before.
     config(['rag.text_failover' => [Lab::Gemini->value => 'gemini-2.5-flash']]);
 
-    SummaryAgent::fake(['Ringkasan biasa dari penyedia utama.']);
+    SummaryAgent::fake(['An ordinary summary from the primary provider.']);
 
     $document = Document::factory()->create([
         'status' => Document::STATUS_PROCESSING,
@@ -55,10 +55,10 @@ test('a single-provider chain (the default) generates normally with no failover'
     ]);
 
     DocumentChunk::factory()->forDocument($document)->create([
-        'content' => 'Teks dokumen yang akan diringkas.',
+        'content' => 'Document text waiting to be summarized.',
     ]);
 
     GenerateSummary::dispatchSync($document);
 
-    expect($document->refresh()->summary)->toBe('Ringkasan biasa dari penyedia utama.');
+    expect($document->refresh()->summary)->toBe('An ordinary summary from the primary provider.');
 });

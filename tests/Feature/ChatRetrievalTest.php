@@ -14,43 +14,39 @@ test('scoped retrieval returns the relevant chunk and never leaks another worksp
     $mine = Workspace::factory()->create();
     $other = Workspace::factory()->create();
 
-    $myDocument = Document::factory()->for($mine)->ready()->create(['filename' => 'panduan.pdf']);
-    $otherDocument = Document::factory()->for($other)->ready()->create(['filename' => 'rahasia.pdf']);
+    $myDocument = Document::factory()->for($mine)->ready()->create(['filename' => 'handbook.pdf']);
+    $otherDocument = Document::factory()->for($other)->ready()->create(['filename' => 'confidential.pdf']);
 
     // Relevant chunk in my workspace (identical to the query → cosine similarity 1.0).
     DocumentChunk::factory()->forDocument($myDocument)->create([
         'embedding' => unitVector(0),
-        'content' => 'Prosedur lengkap dijelaskan di sini.',
+        'content' => 'The full onboarding procedure is described here.',
         'page_number' => 3,
     ]);
 
     // A perfect match, but it belongs to ANOTHER workspace and must never appear.
     DocumentChunk::factory()->forDocument($otherDocument)->create([
         'embedding' => unitVector(0),
-        'content' => 'Data rahasia milik workspace lain.',
+        'content' => 'Confidential data belonging to another workspace.',
         'page_number' => 1,
     ]);
 
-    $result = app(Retriever::class)->retrieve($mine, 'Bagaimana prosedurnya?');
+    $result = app(Retriever::class)->retrieve($mine, 'What is the procedure?');
 
     expect($result->chunks)->toHaveCount(1)
-        ->and($result->chunks->first()->content)->toBe('Prosedur lengkap dijelaskan di sini.')
+        ->and($result->chunks->first()->content)->toBe('The full onboarding procedure is described here.')
         ->and($result->chunks->first()->document_id)->toBe($myDocument->id);
 
     // Citations are derived only from the chunk that was actually retrieved.
-    expect($result->citations)->toHaveCount(1);
-    expect($result->citations[0])->toMatchArray([
-        'document_id' => $myDocument->id,
-        'filename' => 'panduan.pdf',
-        'page_number' => 3,
-    ]);
+    expect($result->citations)->toHaveCount(1)
+        ->and($result->citations[0])->toBeCitation($myDocument->id, 'handbook.pdf', 3);
 
     // The other workspace's content is absent from both context and citations.
     expect($result->context)
-        ->toContain('panduan.pdf, page 3')
-        ->toContain('Prosedur lengkap dijelaskan di sini.')
-        ->not->toContain('rahasia.pdf')
-        ->not->toContain('Data rahasia milik workspace lain.');
+        ->toContain('handbook.pdf, page 3')
+        ->toContain('The full onboarding procedure is described here.')
+        ->not->toContain('confidential.pdf')
+        ->not->toContain('Confidential data belonging to another workspace.');
 });
 
 test('retrieval drops chunks below the minimum similarity threshold', function () {
@@ -63,11 +59,11 @@ test('retrieval drops chunks below the minimum similarity threshold', function (
 
     DocumentChunk::factory()->forDocument($document)->create([
         'embedding' => unitVector(1),
-        'content' => 'Topik yang sama sekali tidak relevan.',
+        'content' => 'A completely unrelated topic.',
         'page_number' => 7,
     ]);
 
-    $result = app(Retriever::class)->retrieve($workspace, 'Pertanyaan apa pun');
+    $result = app(Retriever::class)->retrieve($workspace, 'Any question at all');
 
     expect($result->chunks)->toBeEmpty()
         ->and($result->citations)->toBe([])
@@ -75,11 +71,32 @@ test('retrieval drops chunks below the minimum similarity threshold', function (
         ->and($result->isEmpty())->toBeTrue();
 });
 
+test('retrieval excludes chunks that belong to a failed or processing document', function (string $status) {
+    Embeddings::fake([[unitVector(0)]]);
+
+    $workspace = Workspace::factory()->create();
+    $document = Document::factory()->for($workspace)->create(['status' => $status]);
+
+    DocumentChunk::factory()->forDocument($document)->create([
+        'embedding' => unitVector(0),
+        'content' => 'This stale passage must not be used as evidence.',
+        'page_number' => 1,
+    ]);
+
+    $result = app(Retriever::class)->retrieve($workspace, 'What is the evidence?');
+
+    expect($result->isEmpty())->toBeTrue()
+        ->and($result->citations)->toBe([]);
+})->with([
+    'failed' => Document::STATUS_FAILED,
+    'processing' => Document::STATUS_PROCESSING,
+]);
+
 test('citations are de-duplicated per document and page', function () {
     Embeddings::fake([[unitVector(0)]]);
 
     $workspace = Workspace::factory()->create();
-    $document = Document::factory()->for($workspace)->ready()->create(['filename' => 'catatan.pdf']);
+    $document = Document::factory()->for($workspace)->ready()->create(['filename' => 'notes.pdf']);
 
     // Two equally-relevant chunks from the same document and page.
     DocumentChunk::factory()->forDocument($document)->count(2)->create([
@@ -87,13 +104,9 @@ test('citations are de-duplicated per document and page', function () {
         'page_number' => 5,
     ]);
 
-    $result = app(Retriever::class)->retrieve($workspace, 'Apa isinya?');
+    $result = app(Retriever::class)->retrieve($workspace, 'What is in it?');
 
     expect($result->chunks->count())->toBeGreaterThan(1)
-        ->and($result->citations)->toHaveCount(1);
-    expect($result->citations[0])->toMatchArray([
-        'document_id' => $document->id,
-        'filename' => 'catatan.pdf',
-        'page_number' => 5,
-    ]);
+        ->and($result->citations)->toHaveCount(1)
+        ->and($result->citations[0])->toBeCitation($document->id, 'notes.pdf', 5);
 });

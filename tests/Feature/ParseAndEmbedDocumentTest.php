@@ -4,10 +4,27 @@ use App\Jobs\GenerateSummary;
 use App\Jobs\ParseAndEmbedDocument;
 use App\Models\Document;
 use App\Models\Workspace;
+use App\Services\DocumentParser;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\AnonymousAgent;
 use Laravel\Ai\Embeddings;
+use PhpOffice\PhpWord\IOFactory;
+use PhpOffice\PhpWord\PhpWord;
+
+test('document jobs are unique and the queue retry window exceeds their timeouts', function () {
+    $document = Document::factory()->create();
+    $parseJob = new ParseAndEmbedDocument($document);
+    $summaryJob = new GenerateSummary($document);
+
+    expect($parseJob)->toBeInstanceOf(ShouldBeUnique::class)
+        ->and($summaryJob)->toBeInstanceOf(ShouldBeUnique::class)
+        ->and($parseJob->uniqueId())->toBe((string) $document->id)
+        ->and($summaryJob->uniqueId())->toBe((string) $document->id)
+        ->and(config('queue.connections.database.retry_after'))->toBeGreaterThan($parseJob->timeout)
+        ->and(config('queue.connections.database.retry_after'))->toBeGreaterThan($summaryJob->timeout);
+});
 
 test('the job parses a txt document, embeds its chunks, and queues summary generation', function () {
     Storage::fake('local');
@@ -104,7 +121,7 @@ test('the job falls back to Gemini extraction when local parsing is insufficient
 
     // A scanned PDF (or similar) yields little/no local text; the Gemini fallback
     // then supplies the text. Page numbers are not recoverable there, so null.
-    $extracted = 'Teks lengkap dokumen yang diekstrak oleh Gemini sebagai cadangan ketika ekstraksi lokal tidak memadai.';
+    $extracted = 'The full document text extracted by Gemini as a fallback when local extraction is insufficient.';
     AnonymousAgent::fake([$extracted]);
 
     $workspace = Workspace::factory()->create();
@@ -129,7 +146,7 @@ test('the job falls back to Gemini extraction when local parsing is insufficient
 
     $chunks->each(function ($chunk) {
         expect($chunk->page_number)->toBeNull()
-            ->and($chunk->content)->toContain('diekstrak oleh Gemini');
+            ->and($chunk->content)->toContain('extracted by Gemini');
     });
 
     Bus::assertDispatched(GenerateSummary::class);
@@ -137,4 +154,28 @@ test('the job falls back to Gemini extraction when local parsing is insufficient
     AnonymousAgent::assertPrompted(
         fn ($prompt) => str_contains($prompt->prompt, 'Extract all readable text')
     );
+});
+
+test('the docx parser preserves page breaks without duplicating text runs', function () {
+    Storage::fake('local');
+
+    $phpWord = new PhpWord;
+    $section = $phpWord->addSection();
+    $textRun = $section->addTextRun();
+    $textRun->addText('First page has enough readable text for local parsing.');
+    $section->addPageBreak();
+    $secondTextRun = $section->addTextRun();
+    $secondTextRun->addText('Second page also has enough readable text for local parsing.');
+
+    Storage::disk('local')->makeDirectory('documents');
+    $path = Storage::disk('local')->path('documents/nested-page-break.docx');
+    IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+
+    $pages = app(DocumentParser::class)->parse($path, 'docx');
+
+    expect($pages)->toHaveCount(2)
+        ->and($pages[0]['page_number'])->toBe(1)
+        ->and($pages[0]['text'])->toBe('First page has enough readable text for local parsing.')
+        ->and($pages[1]['page_number'])->toBe(2)
+        ->and($pages[1]['text'])->toBe('Second page also has enough readable text for local parsing.');
 });

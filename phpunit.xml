@@ -24,12 +24,15 @@
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
         <!--
-            Database (PostgreSQL + pgvector) is supplied by .env.testing, which points at a
-            SEPARATE Supabase test project. APP_ENV=testing makes Laravel load .env.testing
-            instead of .env, so dev credentials are never used here. RefreshDatabase drops all
-            tables every run, so the test database must never be shared with development.
-            No SQLite anywhere — vector search requires Postgres+pgvector.
+            Database: PostgreSQL + pgvector, never SQLite — vector search needs the real thing.
+            The connection details come from .env (or .env.testing when you keep one), but the
+            search_path is pinned to an isolated "testing" schema right here so it cannot be
+            overridden by accident. RefreshDatabase only drops the tables inside the connection's
+            search_path, so the suite can share a database with development and still never touch
+            development data. AppServiceProvider creates that schema on connect.
         -->
+        <env name="DB_CONNECTION" value="pgsql"/>
+        <env name="DB_SEARCH_PATH" value="testing"/>
         <env name="MAIL_MAILER" value="array"/>
         <!--
             Cross-lingual retrieval costs one QueryTranslationAgent prompt per distinct

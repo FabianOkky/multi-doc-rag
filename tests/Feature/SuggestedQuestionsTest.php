@@ -12,17 +12,17 @@ use Livewire\Livewire;
 test('suggested questions are generated from the document summaries and shown as chips', function () {
     SuggestionAgent::fake([
         ['questions' => [
-            'Apa kesimpulan utama laporan ini?',
-            'Berapa anggaran yang diusulkan?',
-            'Siapa pemangku kepentingan yang disebut?',
+            'What are the main conclusions of this report?',
+            'How large is the proposed budget?',
+            'Which stakeholders are mentioned?',
         ]],
     ]);
 
     $user = User::factory()->create();
     $workspace = Workspace::factory()->for($user)->create();
     Document::factory()->for($workspace)->ready()->create([
-        'filename' => 'laporan.pdf',
-        'summary' => 'Laporan tahunan tentang anggaran dan pemangku kepentingan.',
+        'filename' => 'report.pdf',
+        'summary' => 'An annual report covering the budget and the stakeholders involved.',
     ]);
 
     $this->actingAs($user);
@@ -30,29 +30,29 @@ test('suggested questions are generated from the document summaries and shown as
     Livewire::test(Window::class, ['workspace' => $workspace])
         ->call('loadSuggestions')
         ->assertSet('suggestions', [
-            'Apa kesimpulan utama laporan ini?',
-            'Berapa anggaran yang diusulkan?',
-            'Siapa pemangku kepentingan yang disebut?',
+            'What are the main conclusions of this report?',
+            'How large is the proposed budget?',
+            'Which stakeholders are mentioned?',
         ])
-        ->assertSee('Apa kesimpulan utama laporan ini?')
-        ->assertSee('Berapa anggaran yang diusulkan?')
-        ->assertSee('Siapa pemangku kepentingan yang disebut?');
+        ->assertSee('What are the main conclusions of this report?')
+        ->assertSee('How large is the proposed budget?')
+        ->assertSee('Which stakeholders are mentioned?');
 
     // The agent was prompted with the document summary — never the real Gemini API.
     SuggestionAgent::assertPrompted(fn ($prompt) => str_contains(
         $prompt->prompt,
-        'Laporan tahunan tentang anggaran dan pemangku kepentingan.'
+        'An annual report covering the budget and the stakeholders involved.'
     ));
 });
 
 test('clicking a suggestion chip sends that question through the chat flow', function () {
     SuggestionAgent::fake([
-        ['questions' => ['Apa isi dokumen ini?', 'Apa poin pentingnya?', 'Bagaimana kesimpulannya?']],
+        ['questions' => ['What is in this document?', 'What are the key points?', 'What is the conclusion?']],
     ]);
 
     $user = User::factory()->create();
     $workspace = Workspace::factory()->for($user)->create();
-    Document::factory()->for($workspace)->ready()->create(['summary' => 'Sebuah ringkasan dokumen.']);
+    Document::factory()->for($workspace)->ready()->create(['summary' => 'A summary of the document.']);
 
     $this->actingAs($user);
 
@@ -63,10 +63,10 @@ test('clicking a suggestion chip sends that question through the chat flow', fun
         ->assertSet('question', '');
 
     // The chosen suggestion was persisted as the user's question via the same
-    // send path as typing, proving the Phase 04 chat flow is reused, not duplicated.
+    // send path as typing, proving the chat flow is reused, not duplicated.
     $userMessage = ChatMessage::where('role', ChatMessage::ROLE_USER)->first();
     expect($userMessage)->not->toBeNull()
-        ->and($userMessage->content)->toBe('Apa isi dokumen ini?');
+        ->and($userMessage->content)->toBe('What is in this document?');
 });
 
 test('no suggestions are shown while no document is ready', function () {
@@ -90,12 +90,12 @@ test('no suggestions are shown while no document is ready', function () {
 
 test('suggestions are generated once per workspace and then served from cache', function () {
     SuggestionAgent::fake([
-        ['questions' => ['Pertanyaan A?', 'Pertanyaan B?', 'Pertanyaan C?']],
+        ['questions' => ['Question A?', 'Question B?', 'Question C?']],
     ])->preventStrayPrompts();
 
     $user = User::factory()->create();
     $workspace = Workspace::factory()->for($user)->create();
-    Document::factory()->for($workspace)->ready()->create(['summary' => 'Ringkasan dokumen.']);
+    Document::factory()->for($workspace)->ready()->create(['summary' => 'A document summary.']);
 
     $suggester = app(Suggester::class);
 
@@ -104,18 +104,22 @@ test('suggestions are generated once per workspace and then served from cache', 
     // gateway (preventStrayPrompts) would throw on the missing second response.
     $second = $suggester->for($workspace);
 
-    expect($first)->toBe(['Pertanyaan A?', 'Pertanyaan B?', 'Pertanyaan C?'])
+    expect($first)->toBe(['Question A?', 'Question B?', 'Question C?'])
         ->and($second)->toBe($first);
 
-    SuggestionAgent::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'Ringkasan dokumen.'));
+    SuggestionAgent::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'A document summary.'));
 });
 
 test('a failing suggestion prompt degrades to no chips instead of breaking the chat', function () {
-    // No fake is registered and no API key is configured, so the prompt throws.
+    SuggestionAgent::fake(function (): never {
+        throw new RuntimeException('Suggestion provider unavailable.');
+    });
+
+    // The provider failure is faked so this test never reaches the network.
     // The chips are a convenience: losing them must not cost the user the page.
     $user = User::factory()->create();
     $workspace = Workspace::factory()->for($user)->create();
-    Document::factory()->for($workspace)->ready()->create(['summary' => 'Sebuah ringkasan dokumen.']);
+    Document::factory()->for($workspace)->ready()->create(['summary' => 'A summary of the document.']);
 
     $this->actingAs($user);
 
@@ -126,19 +130,23 @@ test('a failing suggestion prompt degrades to no chips instead of breaking the c
 });
 
 test('a failed suggestion prompt is not cached, so the next visit retries', function () {
+    SuggestionAgent::fake(function (): never {
+        throw new RuntimeException('Suggestion provider unavailable.');
+    });
+
     $user = User::factory()->create();
     $workspace = Workspace::factory()->for($user)->create();
-    Document::factory()->for($workspace)->ready()->create(['summary' => 'Ringkasan dokumen.']);
+    Document::factory()->for($workspace)->ready()->create(['summary' => 'A document summary.']);
 
     $suggester = app(Suggester::class);
 
-    // First call fails (no fake registered) and must leave the cache empty...
+    // First call fails and must leave the cache empty...
     expect($suggester->for($workspace))->toBe([]);
 
     // ...so once the provider recovers, the very next call succeeds.
     SuggestionAgent::fake([
-        ['questions' => ['Pertanyaan A?', 'Pertanyaan B?', 'Pertanyaan C?']],
+        ['questions' => ['Question A?', 'Question B?', 'Question C?']],
     ]);
 
-    expect($suggester->for($workspace))->toBe(['Pertanyaan A?', 'Pertanyaan B?', 'Pertanyaan C?']);
+    expect($suggester->for($workspace))->toBe(['Question A?', 'Question B?', 'Question C?']);
 });
