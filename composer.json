@@ -2,16 +2,18 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "okkyfabian/multi-doc-rag",
     "type": "project",
-    "description": "Multi-Doc RAG — tanya-jawab atas dokumen sendiri dengan citation.",
+    "description": "Multi-Doc RAG: ask questions across your own documents and get answers with citations.",
     "keywords": [
         "laravel",
-        "framework"
+        "livewire",
+        "rag",
+        "pgvector",
+        "gemini"
     ],
     "license": "MIT",
     "require": {
         "php": "^8.3",
         "laravel/ai": "^0.7.2",
-        "laravel/chisel": "^0.1.0",
         "laravel/fortify": "^1.37.2",
         "laravel/framework": "^13.7",
         "laravel/tinker": "^3.0",
@@ -24,7 +26,6 @@
         "fakerphp/faker": "^1.24",
         "laravel/boost": "^2.2",
         "laravel/pail": "^1.2.5",
-        "laravel/pao": "^1.0.6",
         "laravel/pint": "^1.27",
         "laravel/sail": "^1.53",
         "mockery/mockery": "^1.6",
@@ -77,8 +78,7 @@
             "@php artisan package:discover --ansi"
         ],
         "post-update-cmd": [
-            "@php artisan vendor:publish --tag=laravel-assets --ansi --force",
-            "@php artisan boost:update --ansi"
+            "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
         ],
         "post-root-package-install": [
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
