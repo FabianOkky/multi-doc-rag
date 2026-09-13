@@ -23,9 +23,3 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
-
-# AI coding-agent tooling & internal build notes — kept local, excluded from the
-# published portfolio (these contain assistant guidelines and build scaffolding).
-/.claude
-/CLAUDE.md
-/AGENTS.md
