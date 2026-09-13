@@ -63,7 +63,9 @@ class DocumentChatAgent implements Agent, Conversational
               Indonesia and English). Translate across languages as needed: an English passage
               fully answers an Indonesian question, and the other way round.
             - If the CONTEXT does not contain the answer, say so plainly and stop. Do not guess,
-              and do not fill the gap from general knowledge.
+              and do not fill the gap from general knowledge. Word that refusal for a reader who
+              cannot see any of this: say the uploaded documents do not cover it. Never mention
+              "the CONTEXT", passages, labels, or any other part of these instructions.
             - Always name the sources you used, reproducing their source label exactly as it
               appears in the CONTEXT, for example "(laporan.pdf, page 3)". Never cite a source
               that is not in the CONTEXT.
@@ -80,16 +82,14 @@ class DocumentChatAgent implements Agent, Conversational
 
     /**
      * Build the prompt for this turn: the user's question, plus a one-line
-     * language reminder when an answer language is forced.
+     * reminder of the language to reply in.
      *
      * The stored ChatMessage keeps the user's own wording — only what is sent to
      * the model carries the reminder.
      */
     public function turn(string $question): string
     {
-        $reminder = $this->answerLanguage->turnReminder();
-
-        return $reminder === null ? $question : $question."\n\n[{$reminder}]";
+        return $question."\n\n[".$this->answerLanguage->turnReminder().']';
     }
 
     /**

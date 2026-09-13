@@ -45,18 +45,22 @@ enum AnswerLanguage: string
     }
 
     /**
-     * A short reminder appended to the user's turn when a language is forced.
+     * A short reminder appended to the user's turn, naming the language to reply in.
      *
      * The system prompt alone loses to the conversation history: after a few
      * Indonesian exchanges the model keeps answering in Indonesian however the
      * instructions are worded. Repeating the requirement immediately before the
-     * model replies is the position that actually wins. Null for Auto, which
-     * needs no reminder — mirroring the question is already the default.
+     * model replies is the position that actually wins.
+     *
+     * Auto gets a reminder too, for the same reason. "Mirror the question" is
+     * only the default in an empty conversation; once a few turns exist, the
+     * language they were written in drags the next answer along with it, and a
+     * question asked in the other language comes back in the wrong one.
      */
-    public function turnReminder(): ?string
+    public function turnReminder(): string
     {
         return match ($this) {
-            self::Auto => null,
+            self::Auto => 'Reply in the language this question is written in.',
             self::Indonesian => 'Jawab dalam Bahasa Indonesia.',
             self::English => 'Answer in English.',
         };
@@ -71,6 +75,21 @@ enum AnswerLanguage: string
             self::Auto => 'Write it in the same language as the document itself.',
             self::Indonesian => 'Write it in Bahasa Indonesia, whatever language the document is in.',
             self::English => 'Write it in English, whatever language the document is in.',
+        };
+    }
+
+    /**
+     * Explain a temporary AI failure in the language selected for this answer.
+     * Auto uses a small, deterministic question-language check so the fallback
+     * remains understandable even when the language model itself is unavailable.
+     */
+    public function unavailableMessage(string $question): string
+    {
+        $language = $this === self::Auto ? self::detectQuestionLanguage($question) : $this;
+
+        return match ($language) {
+            self::Indonesian => 'Maaf, jawaban belum dapat dibuat karena layanan AI sedang bermasalah. Pertanyaan Anda sudah tersimpan; silakan coba lagi sebentar lagi.',
+            self::English, self::Auto => 'Sorry, an answer could not be generated because the AI service is temporarily unavailable. Your question was saved; please try again shortly.',
         };
     }
 
@@ -96,5 +115,25 @@ enum AnswerLanguage: string
     public static function fromValue(?string $value): self
     {
         return self::tryFrom((string) $value) ?? self::Auto;
+    }
+
+    /**
+     * Detect the likely language of a short question without an external call.
+     */
+    private static function detectQuestionLanguage(string $question): self
+    {
+        $tokens = preg_split('/[^\p{L}]+/u', mb_strtolower($question), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        $indonesian = ['apa', 'apakah', 'bagaimana', 'berapa', 'dari', 'dengan', 'di', 'dokumen', 'ini', 'jelaskan', 'mengapa', 'siapa', 'tolong', 'untuk', 'yang'];
+        $english = ['and', 'can', 'document', 'explain', 'for', 'from', 'how', 'is', 'please', 'that', 'the', 'this', 'what', 'which', 'who', 'why'];
+
+        $indonesianScore = count(array_intersect($tokens, $indonesian));
+        $englishScore = count(array_intersect($tokens, $english));
+
+        if ($indonesianScore !== $englishScore) {
+            return $indonesianScore > $englishScore ? self::Indonesian : self::English;
+        }
+
+        return str_starts_with(app()->getLocale(), 'id') ? self::Indonesian : self::English;
     }
 }
