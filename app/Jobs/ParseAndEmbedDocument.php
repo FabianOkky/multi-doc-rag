@@ -6,14 +6,16 @@ use App\Models\Document;
 use App\Models\DocumentChunk;
 use App\Services\Chunker;
 use App\Services\DocumentParser;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Embeddings;
 use RuntimeException;
 use Throwable;
 
-class ParseAndEmbedDocument implements ShouldQueue
+class ParseAndEmbedDocument implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
@@ -27,6 +29,18 @@ class ParseAndEmbedDocument implements ShouldQueue
      * The number of seconds the job may run before timing out.
      */
     public int $timeout = 300;
+
+    /**
+     * Keep duplicate parse requests locked beyond the longest allowed attempt.
+     */
+    public int $uniqueFor = 600;
+
+    /**
+     * Delay retries when an external parser or embedding provider is unavailable.
+     *
+     * @var array<int, int>
+     */
+    public array $backoff = [10, 30];
 
     /**
      * Hard cap on chunks per document to protect the embedding quota.
@@ -65,6 +79,10 @@ class ParseAndEmbedDocument implements ShouldQueue
             GenerateSummary::dispatch($this->document);
         } catch (Throwable $e) {
             report($e);
+
+            if ($e::class !== RuntimeException::class) {
+                throw $e;
+            }
 
             $this->document->markFailed();
         }
@@ -133,20 +151,34 @@ class ParseAndEmbedDocument implements ShouldQueue
      */
     private function storeChunks(array $chunks, array $embeddings): void
     {
-        $this->document->chunks()->delete();
-
-        $models = [];
-
-        foreach ($chunks as $index => $chunk) {
-            $models[] = new DocumentChunk([
-                'workspace_id' => $this->document->workspace_id,
-                'content' => $chunk['content'],
-                'page_number' => $chunk['page_number'],
-                'embedding' => $embeddings[$index],
-            ]);
+        if (count($chunks) !== count($embeddings)) {
+            throw new RuntimeException("Embedding count did not match chunk count for document [{$this->document->id}].");
         }
 
-        $this->document->chunks()->saveMany($models);
+        DB::transaction(function () use ($chunks, $embeddings): void {
+            $this->document->chunks()->delete();
+
+            $models = [];
+
+            foreach ($chunks as $index => $chunk) {
+                $models[] = new DocumentChunk([
+                    'workspace_id' => $this->document->workspace_id,
+                    'content' => $chunk['content'],
+                    'page_number' => $chunk['page_number'],
+                    'embedding' => $embeddings[$index],
+                ]);
+            }
+
+            $this->document->chunks()->saveMany($models);
+        });
+    }
+
+    /**
+     * The document id is the unit of work, regardless of who dispatches it.
+     */
+    public function uniqueId(): string
+    {
+        return (string) $this->document->getKey();
     }
 
     /**

@@ -82,7 +82,7 @@
 
                         <div class="flex flex-col items-start gap-2">
                             <p class="max-w-[85%] rounded-2xl rounded-bl-md bg-zinc-100 px-4 py-2.5 text-sm leading-relaxed text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">
-                                {{ __('The proposed budget for the next fiscal year is 4.2 million, up 8% year on year, with the increase concentrated in infrastructure.') }}
+                                {{ __('Anggaran yang diusulkan untuk tahun fiskal berikutnya adalah 4,2 juta, naik 8% dari tahun sebelumnya, dengan kenaikan terbesar pada infrastruktur.') }}
                             </p>
 
                             <div class="flex flex-wrap items-center gap-1.5 ps-1">
@@ -98,7 +98,7 @@
                         </div>
 
                         <p class="rule pt-4 text-xs text-zinc-400 dark:text-zinc-500">
-                            {{ __('Asked in Indonesian, answered from English sources — the question is searched in both languages.') }}
+                            {{ __('Asked and answered in Indonesian from English sources — the question is searched in both languages.') }}
                         </p>
                     </div>
                 </div>

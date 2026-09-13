@@ -18,6 +18,16 @@ class Workspace extends Model
     use HasFactory;
 
     /**
+     * Mirror database defaults before the model is persisted.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'answer_language' => AnswerLanguage::Auto->value,
+        'is_shared' => false,
+    ];
+
+    /**
      * The length of a generated public share token.
      */
     private const int SHARE_TOKEN_LENGTH = 40;
@@ -91,7 +101,7 @@ class Workspace extends Model
     }
 
     /**
-     * The documents uploaded to this workspace (populated in Phase 02).
+     * The documents uploaded to this workspace.
      *
      * @return HasMany<Document, $this>
      */

@@ -5,12 +5,13 @@ namespace App\Jobs;
 use App\Agents\SummaryAgent;
 use App\Models\Document;
 use App\Services\AnswerLanguage;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Str;
 use Throwable;
 
-class GenerateSummary implements ShouldQueue
+class GenerateSummary implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
@@ -25,6 +26,11 @@ class GenerateSummary implements ShouldQueue
      * The number of seconds the job may run before timing out.
      */
     public int $timeout = 120;
+
+    /**
+     * Prevent duplicate summaries for the same document.
+     */
+    public int $uniqueFor = 300;
 
     /**
      * Create a new job instance.
@@ -94,5 +100,13 @@ class GenerateSummary implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         $this->document->markReady();
+    }
+
+    /**
+     * The document id is the unit of work, regardless of who dispatches it.
+     */
+    public function uniqueId(): string
+    {
+        return (string) $this->document->getKey();
     }
 }

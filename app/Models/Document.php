@@ -15,6 +15,15 @@ class Document extends Model
     /** @use HasFactory<DocumentFactory> */
     use HasFactory;
 
+    /**
+     * Mirror the database default before the model is persisted.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'status' => self::STATUS_PROCESSING,
+    ];
+
     public const string STATUS_PROCESSING = 'processing';
 
     public const string STATUS_READY = 'ready';

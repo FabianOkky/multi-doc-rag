@@ -5,14 +5,17 @@ namespace App\Livewire\Workspace;
 use App\Jobs\ParseAndEmbedDocument;
 use App\Models\Document;
 use App\Models\Workspace;
+use Closure;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
+use Throwable;
 
 #[Layout('layouts.app')]
 class Show extends Component
@@ -69,8 +72,18 @@ class Show extends Component
     protected function rules(): array
     {
         return [
-            'files' => ['required', 'array'],
-            'files.*' => ['file', 'mimes:pdf,docx,txt', 'max:'.(20 * 1024)],
+            'files' => ['required', 'array', 'max:10'],
+            'files.*' => [
+                'file',
+                'mimes:pdf,docx,txt',
+                'extensions:pdf,docx,txt',
+                'max:'.(20 * 1024),
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if ($value instanceof TemporaryUploadedFile && ! $this->mimeMatchesExtension($value)) {
+                        $fail(__('The file extension does not match its contents.'));
+                    }
+                },
+            ],
         ];
     }
 
@@ -85,15 +98,26 @@ class Show extends Component
 
         foreach ($this->files as $file) {
             $path = $file->store('documents', config('filesystems.default'));
+            $document = null;
 
-            $document = $this->workspace->documents()->create([
-                'filename' => $file->getClientOriginalName(),
-                'file_type' => strtolower($file->getClientOriginalExtension()),
-                'file_url' => $path,
-                'status' => Document::STATUS_PROCESSING,
-            ]);
+            try {
+                $document = $this->workspace->documents()->create([
+                    'filename' => $this->normalizedFilename($file),
+                    'file_type' => strtolower($file->getClientOriginalExtension()),
+                    'file_url' => $path,
+                    'status' => Document::STATUS_PROCESSING,
+                ]);
 
-            ParseAndEmbedDocument::dispatch($document);
+                ParseAndEmbedDocument::dispatch($document);
+            } catch (Throwable $exception) {
+                if ($document !== null) {
+                    $document->delete();
+                }
+
+                Storage::disk(config('filesystems.default'))->delete($path);
+
+                throw $exception;
+            }
         }
 
         $this->reset('files');
@@ -140,11 +164,45 @@ class Show extends Component
 
         abort_if($document === null, 404);
 
+        abort_unless($document->status === Document::STATUS_FAILED, 409);
+
         $document->update(['status' => Document::STATUS_PROCESSING]);
 
         ParseAndEmbedDocument::dispatch($document);
 
         Flux::toast(text: __('Retrying document processing.'));
+    }
+
+    /**
+     * Ensure the selected parser matches the uploaded file's detected contents.
+     */
+    private function mimeMatchesExtension(TemporaryUploadedFile $file): bool
+    {
+        $allowedMimeTypes = [
+            'pdf' => ['application/pdf'],
+            'docx' => [
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/zip',
+            ],
+            'txt' => ['text/plain'],
+        ];
+
+        $extension = Str::lower($file->getClientOriginalExtension());
+
+        return in_array($file->getMimeType(), $allowedMimeTypes[$extension] ?? [], true);
+    }
+
+    /**
+     * Keep the user-facing filename safe for the 255-character database column.
+     */
+    private function normalizedFilename(TemporaryUploadedFile $file): string
+    {
+        $extension = Str::lower($file->getClientOriginalExtension());
+        $basename = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $basename = preg_replace('/[\x00-\x1F\x7F]/u', '', $basename) ?? '';
+        $basename = Str::limit(trim($basename), 240, '');
+
+        return ($basename !== '' ? $basename : 'document').'.'.$extension;
     }
 
     public function render(): View

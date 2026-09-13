@@ -108,8 +108,8 @@ return [
     | Embedding dimensions
     |--------------------------------------------------------------------------
     |
-    | Gemini text-embedding-004 outputs 768-dimensional vectors. This number
-    | MUST stay in sync in three places:
+    | Gemini gemini-embedding-001 is requested at 768 output dimensions. This
+    | number MUST stay in sync in three places:
     |   1. config/ai.php  -> providers.gemini.models.embeddings.dimensions
     |   2. the migration  -> $table->vector('embedding', dimensions: 768)
     |   3. here.

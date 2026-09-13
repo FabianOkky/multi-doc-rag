@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Workspace;
 
+use App\Actions\DeleteWorkspace;
 use App\Models\Workspace;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
@@ -41,6 +42,8 @@ class Index extends Component
     {
         $this->authorize('create', Workspace::class);
 
+        $this->name = trim($this->name);
+
         $validated = $this->validateOnly('name');
 
         Auth::user()->workspaces()->create($validated);
@@ -73,6 +76,8 @@ class Index extends Component
 
         $this->authorize('update', $workspace);
 
+        $this->editName = trim($this->editName);
+
         $validated = $this->validateOnly('editName');
 
         $workspace->update(['name' => $validated['editName']]);
@@ -99,13 +104,13 @@ class Index extends Component
     /**
      * Delete the workspace currently pending confirmation.
      */
-    public function deleteWorkspace(): void
+    public function deleteWorkspace(DeleteWorkspace $deleteWorkspace): void
     {
         $workspace = Workspace::findOrFail($this->deletingId);
 
         $this->authorize('delete', $workspace);
 
-        $workspace->delete();
+        $deleteWorkspace->execute($workspace);
 
         $this->reset('deletingId', 'deletingName', 'showDeleteModal');
 

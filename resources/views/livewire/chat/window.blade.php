@@ -74,6 +74,8 @@
             <flux:input
                 class="flex-1"
                 wire:model="question"
+                wire:loading.attr="disabled"
+                wire:target="sendMessage,streamAnswer"
                 :placeholder="__('Ask a question about your documents…')"
                 autocomplete="off"
             />
@@ -82,7 +84,7 @@
                 variant="primary"
                 icon="paper-airplane"
                 wire:loading.attr="disabled"
-                wire:target="sendMessage"
+                wire:target="sendMessage,streamAnswer"
             >
                 <span class="sr-only sm:not-sr-only">{{ __('Send') }}</span>
             </flux:button>

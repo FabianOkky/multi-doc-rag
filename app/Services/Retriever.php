@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Document;
 use App\Models\DocumentChunk;
 use App\Models\Workspace;
 use Illuminate\Support\Collection;
@@ -92,6 +93,7 @@ class Retriever
     {
         return DocumentChunk::query()
             ->where('workspace_id', $workspace->id)
+            ->whereHas('document', fn ($query) => $query->where('status', Document::STATUS_READY))
             ->select(['id', 'document_id', 'page_number', 'content'])
             ->selectVectorDistance('embedding', $vector, as: 'distance')
             ->with('document:id,filename')

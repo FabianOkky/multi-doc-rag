@@ -12,10 +12,15 @@ use App\Services\Suggester;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Ai\Streaming\Events\TextDelta;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
+use RuntimeException;
+use Throwable;
 
 class Window extends Component
 {
@@ -25,6 +30,11 @@ class Window extends Component
      * How many prior messages to replay to the agent as conversation history.
      */
     private const int HISTORY_LIMIT = 10;
+
+    /**
+     * Protect provider quota from rapid repeated prompts by one user.
+     */
+    private const int MAX_QUESTIONS_PER_MINUTE = 10;
 
     public Workspace $workspace;
 
@@ -37,6 +47,7 @@ class Window extends Component
      * The question awaiting an answer: set when the user sends a message and
      * consumed by streamAnswer() so the reply can stream into the UI.
      */
+    #[Locked]
     public ?string $pendingQuestion = null;
 
     /**
@@ -89,6 +100,8 @@ class Window extends Component
      */
     public function loadSuggestions(): void
     {
+        $this->authorize('view', $this->workspace);
+
         $this->suggestions = app(Suggester::class)->for($this->workspace);
     }
 
@@ -98,6 +111,8 @@ class Window extends Component
      */
     public function askSuggestion(int $index): void
     {
+        $this->authorize('update', $this->workspace);
+
         $question = $this->suggestions[$index] ?? null;
 
         if ($question === null) {
@@ -114,7 +129,29 @@ class Window extends Component
      */
     public function sendMessage(): void
     {
+        $this->authorize('update', $this->workspace);
+
+        if ($this->pendingQuestion !== null) {
+            $this->addError('question', __('Please wait for the current answer to finish.'));
+
+            return;
+        }
+
+        $this->question = trim($this->question);
+
         $this->validate();
+
+        $rateLimitKey = 'rag:chat:'.$this->workspace->id.':'.Auth::id();
+
+        if (RateLimiter::tooManyAttempts($rateLimitKey, self::MAX_QUESTIONS_PER_MINUTE)) {
+            $this->addError('question', __('Too many questions. Please try again in :seconds seconds.', [
+                'seconds' => RateLimiter::availableIn($rateLimitKey),
+            ]));
+
+            return;
+        }
+
+        RateLimiter::hit($rateLimitKey, 60);
 
         $this->session->messages()->create([
             'role' => ChatMessage::ROLE_USER,
@@ -134,37 +171,54 @@ class Window extends Component
     #[On('chat-answer-requested')]
     public function streamAnswer(): void
     {
+        $this->authorize('update', $this->workspace);
+
         $question = $this->pendingQuestion;
 
         if ($question === null) {
             return;
         }
 
-        $this->pendingQuestion = null;
-
-        $result = app(Retriever::class)->retrieve($this->workspace, $question);
-
-        $agent = new DocumentChatAgent(
-            $this->workspace,
-            $result->context,
-            $this->history(),
-            AnswerLanguage::fromValue($this->answerLanguage),
-        );
-
+        $language = AnswerLanguage::fromValue($this->answerLanguage);
         $answer = '';
+        $citations = [];
 
-        foreach ($agent->stream($agent->turn($question), provider: config('rag.text_failover')) as $event) {
-            if ($event instanceof TextDelta) {
-                $answer .= $event->delta;
-                $this->stream(to: 'answer', content: $event->delta);
+        try {
+            $result = app(Retriever::class)->retrieve($this->workspace, $question);
+
+            $agent = new DocumentChatAgent(
+                $this->workspace,
+                $result->context,
+                $this->history(),
+                $language,
+            );
+
+            foreach ($agent->stream($agent->turn($question), provider: config('rag.text_failover')) as $event) {
+                if ($event instanceof TextDelta) {
+                    $answer .= $event->delta;
+                    $this->stream(to: 'answer', content: $event->delta);
+                }
             }
+
+            if (trim($answer) === '') {
+                throw new RuntimeException('The document chat agent returned an empty answer.');
+            }
+
+            $citations = $result->citationsUsedBy($answer);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            $answer = $language->unavailableMessage($question);
+            $citations = [];
         }
 
         $this->session->messages()->create([
             'role' => ChatMessage::ROLE_ASSISTANT,
             'content' => $answer,
-            'citations' => $result->citations,
+            'citations' => $citations,
         ]);
+
+        $this->pendingQuestion = null;
     }
 
     /**

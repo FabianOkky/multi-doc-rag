@@ -8,6 +8,7 @@ use PhpOffice\PhpWord\Element\PageBreak;
 use PhpOffice\PhpWord\IOFactory;
 use RuntimeException;
 use Smalot\PdfParser\Parser as PdfParser;
+use Throwable;
 
 class DocumentParser
 {
@@ -34,9 +35,17 @@ class DocumentParser
         $type = strtolower($type);
         $primary = config('rag.parser_primary', 'local');
 
-        $pages = $primary === 'gemini'
-            ? $this->parseWithGemini($absolutePath, $type)
-            : $this->parseLocally($absolutePath, $type);
+        try {
+            $pages = $primary === 'gemini'
+                ? $this->parseWithGemini($absolutePath, $type)
+                : $this->parseLocally($absolutePath, $type);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            $pages = $primary === 'gemini'
+                ? $this->parseLocally($absolutePath, $type)
+                : $this->parseWithGemini($absolutePath, $type);
+        }
 
         if ($this->isInsufficient($pages)) {
             $pages = $primary === 'gemini'
@@ -98,15 +107,7 @@ class DocumentParser
 
         foreach ($phpWord->getSections() as $section) {
             foreach ($section->getElements() as $element) {
-                if ($element instanceof PageBreak) {
-                    $pages[] = ['page_number' => $page, 'text' => $buffer];
-                    $buffer = '';
-                    $page++;
-
-                    continue;
-                }
-
-                $buffer .= $this->elementText($element)."\n";
+                $this->appendElement($element, $pages, $page, $buffer);
             }
         }
 
@@ -116,27 +117,39 @@ class DocumentParser
     }
 
     /**
-     * Recursively pull text out of a PhpWord element tree.
+     * Recursively pull text and page breaks out of a PhpWord element tree.
+     *
+     * @param  array<int, array{page_number: int|null, text: string}>  $pages
      */
-    private function elementText(object $element): string
+    private function appendElement(object $element, array &$pages, int &$page, string &$buffer): void
     {
-        $text = '';
+        if ($element instanceof PageBreak) {
+            $pages[] = ['page_number' => $page, 'text' => $buffer];
+            $buffer = '';
+            $page++;
 
-        if (method_exists($element, 'getText')) {
-            $value = $element->getText();
-
-            if (is_string($value)) {
-                $text .= $value.' ';
-            }
+            return;
         }
 
         if (method_exists($element, 'getElements')) {
             foreach ($element->getElements() as $child) {
-                $text .= $this->elementText($child);
+                $this->appendElement($child, $pages, $page, $buffer);
             }
+
+            $buffer .= "\n";
+
+            return;
         }
 
-        return $text;
+        if (! method_exists($element, 'getText')) {
+            return;
+        }
+
+        $value = $element->getText();
+
+        if (is_string($value)) {
+            $buffer .= $value.' ';
+        }
     }
 
     /**

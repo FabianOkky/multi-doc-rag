@@ -23,10 +23,10 @@ class QueryTranslator
     private const int CACHE_TTL = 604800;
 
     /**
-     * Questions longer than this are searched as-is: they are usually pasted
-     * passages rather than questions, and translating them is not worth a prompt.
+     * Keep this aligned with the chat input limit so every accepted question can
+     * receive the same Indonesian/English retrieval treatment promised by the UI.
      */
-    private const int MAX_TRANSLATABLE_CHARS = 500;
+    private const int MAX_TRANSLATABLE_CHARS = 2000;
 
     /**
      * Get the phrasings to search for the given question.
